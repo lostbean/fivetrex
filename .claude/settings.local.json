@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:fivetran.com)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix test:*)",
+      "Bash(mix format:*)"
+    ]
+  }
+}
