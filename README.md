@@ -13,7 +13,7 @@ handling, and a clean functional API.
 
 ## Features
 
-- **Complete API Coverage** - Full CRUD operations for Groups, Connectors, and
+- **Core API Coverage** - Full CRUD operations for Groups, Connectors, and
   Destinations
 - **Stream-based Pagination** - Efficiently iterate over thousands of resources
   using Elixir Streams
@@ -21,9 +21,33 @@ handling, and a clean functional API.
   compile-time safety
 - **Structured Errors** - Pattern-matchable error types for robust error
   handling
+- **Built-in Retry** - Automatic retry with exponential backoff for rate limits
+  and transient errors
 - **Safety Valves** - Destructive operations like `resync!` require explicit
   confirmation
 - **Zero Configuration** - Works out of the box with just API credentials
+
+## API Coverage
+
+Fivetrex covers the core Fivetran API resources needed for managing data
+pipelines:
+
+| Fivetran API Resource | Status  | Functions                                                                                                |
+| --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| **Groups**            | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`                                                    |
+| **Connectors**        | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`, `sync`, `resync!`, `pause`, `resume`, `get_state` |
+| **Destinations**      | ✅ Full | `get`, `create`, `update`, `delete`, `test`                                                              |
+| Users                 | ❌      | Not implemented                                                                                          |
+| Teams                 | ❌      | Not implemented                                                                                          |
+| Roles                 | ❌      | Not implemented                                                                                          |
+| Transformations       | ❌      | Not implemented                                                                                          |
+| Webhooks (outgoing)   | ❌      | Not implemented                                                                                          |
+| Certificates          | ❌      | Not implemented                                                                                          |
+| Log Services          | ❌      | Not implemented                                                                                          |
+
+> **Note:** The implemented resources (Groups, Connectors, Destinations) cover
+> the most commonly used Fivetran functionality for managing data pipelines
+> programmatically.
 
 ## Installation
 
@@ -329,14 +353,6 @@ Generate documentation locally:
 mix docs
 open doc/index.html
 ```
-
-## Contributing
-
-1. Fork it
-2. Create your feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin feature/my-feature`)
-5. Create a new Pull Request
 
 ## License
 
