@@ -15,6 +15,31 @@ defmodule Fivetrex.Destinations do
     * Contains credentials and connection information
     * Has a region for data processing
 
+  ## Why No `list/2` or `stream/2`?
+
+  Unlike Groups and Connectors, this module does not provide `list/2` or `stream/2`
+  functions. This is intentional:
+
+  **Fivetran's 1:1 Relationship**: Each Fivetran group has exactly one destination,
+  and the destination ID is the same as its group ID. This means:
+
+    * To "list all destinations", simply list all groups and use their IDs
+    * There's no separate `/destinations` endpoint that returns multiple items
+
+  **How to iterate over destinations:**
+
+      # Stream all destinations via their groups
+      client
+      |> Fivetrex.Groups.stream()
+      |> Stream.map(fn group ->
+        case Fivetrex.Destinations.get(client, group.id) do
+          {:ok, destination} -> destination
+          {:error, _} -> nil
+        end
+      end)
+      |> Stream.reject(&is_nil/1)
+      |> Enum.to_list()
+
   ## Common Operations
 
   ### Get a Destination
