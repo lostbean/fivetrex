@@ -77,6 +77,7 @@ defmodule Fivetrex do
     * `Fivetrex.Client` - Low-level HTTP client
     * `Fivetrex.Error` - Structured error types
     * `Fivetrex.Stream` - Pagination utilities
+    * `Fivetrex.Retry` - Retry with exponential backoff for transient failures
 
   ## Model Structs
 
