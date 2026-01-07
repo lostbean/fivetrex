@@ -1,3 +1,11 @@
+# Load .env file for integration tests
+".env"
+|> Dotenvy.source!()
+|> System.put_env()
+
+# Exclude integration tests by default
+ExUnit.configure(exclude: [:integration])
+
 ExUnit.start()
 
 defmodule Fivetrex.TestHelpers do
@@ -55,5 +63,21 @@ defmodule Fivetrex.TestHelpers do
       "code" => "Error",
       "message" => message
     })
+  end
+
+  @doc """
+  Creates a client for integration tests using environment variables.
+  Raises if credentials are not configured.
+  """
+  def integration_client do
+    api_key =
+      System.get_env("FIVETRAN_API_KEY") ||
+        raise "FIVETRAN_API_KEY not set. Add it to .env file."
+
+    api_secret =
+      System.get_env("FIVETRAN_API_SECRET") ||
+        raise "FIVETRAN_API_SECRET not set. Add it to .env file."
+
+    Fivetrex.client(api_key: api_key, api_secret: api_secret)
   end
 end

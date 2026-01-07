@@ -9,8 +9,14 @@ code in this repository.
 # Run all checks (format, credo, compile, test)
 mix precommit
 
+# Run CI checks (check-formatted, credo, compile, test + integration)
+mix ci
+
 # Run tests
 mix test
+
+# Run integration tests (requires .env with API credentials)
+mix test --include integration
 
 # Run a single test file
 mix test test/fivetrex/client_test.exs

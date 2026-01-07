@@ -129,13 +129,17 @@ defmodule Fivetrex.ConnectorsTest do
 
   describe "sync/2" do
     test "triggers a sync", %{bypass: bypass, client: client} do
+      # Real Fivetran API returns {"code": "Success", "message": "..."} for sync
+      response = Jason.encode!(%{"code" => "Success", "message" => "Sync triggered"})
+
       Bypass.expect_once(bypass, "POST", "/connectors/c1/sync", fn conn ->
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.resp(200, success_response(%{"syncing" => true}))
+        |> Plug.Conn.resp(200, response)
       end)
 
-      assert {:ok, %{"syncing" => true}} = Connectors.sync(client, "c1")
+      assert {:ok, %{"code" => "Success", "message" => "Sync triggered"}} =
+               Connectors.sync(client, "c1")
     end
   end
 

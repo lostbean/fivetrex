@@ -329,6 +329,9 @@ defmodule Fivetrex.Connectors do
   @spec sync(Client.t(), String.t()) :: {:ok, map()} | {:error, Fivetrex.Error.t()}
   def sync(client, connector_id) do
     case Client.post(client, "/connectors/#{connector_id}/sync") do
+      {:ok, %{"code" => "Success"} = response} ->
+        {:ok, response}
+
       {:ok, %{"data" => data}} ->
         {:ok, data}
 

@@ -308,6 +308,9 @@ client = Fivetrex.client(
 # Run all checks (format, credo, compile, test)
 mix precommit
 
+# Run CI checks (check-formatted, credo, compile, test + integration)
+mix ci
+
 # Run tests
 mix test
 
@@ -315,8 +318,8 @@ mix test
 mix test --cover
 ```
 
-Fivetrex uses [Bypass](https://hexdocs.pm/bypass) for integration testing. See
-the test suite for examples of mocking Fivetran API responses.
+Fivetrex uses [Bypass](https://hexdocs.pm/bypass) for unit tests. Integration
+tests run against the real Fivetran API and require credentials in `.env`.
 
 ## Documentation
 

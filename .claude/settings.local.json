@@ -4,7 +4,10 @@
       "WebFetch(domain:fivetran.com)",
       "Bash(mix deps.get:*)",
       "Bash(mix test:*)",
-      "Bash(mix format:*)"
+      "Bash(mix format:*)",
+      "Bash(mix precommit:*)",
+      "Bash(mix ci)",
+      "Bash(grep:*)"
     ]
   }
 }
