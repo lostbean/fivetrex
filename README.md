@@ -3,17 +3,26 @@
 [![Hex.pm](https://img.shields.io/hexpm/v/fivetrex.svg)](https://hex.pm/packages/fivetrex)
 [![Documentation](https://img.shields.io/badge/docs-hexdocs-blue.svg)](https://hexdocs.pm/fivetrex)
 
-Elixir client library for the [Fivetran REST API](https://fivetran.com/docs/rest-api).
+Elixir client library for the
+[Fivetran REST API](https://fivetran.com/docs/rest-api).
 
-Fivetrex provides a powerful, idiomatic Elixir interface for managing Fivetran resources including Groups, Connectors, and Destinations. Built on [Req](https://hexdocs.pm/req), it offers streaming pagination, structured error handling, and a clean functional API.
+Fivetrex provides a powerful, idiomatic Elixir interface for managing Fivetran
+resources including Groups, Connectors, and Destinations. Built on
+[Req](https://hexdocs.pm/req), it offers streaming pagination, structured error
+handling, and a clean functional API.
 
 ## Features
 
-- **Complete API Coverage** - Full CRUD operations for Groups, Connectors, and Destinations
-- **Stream-based Pagination** - Efficiently iterate over thousands of resources using Elixir Streams
-- **Typed Structs** - All responses are parsed into typed structs for compile-time safety
-- **Structured Errors** - Pattern-matchable error types for robust error handling
-- **Safety Valves** - Destructive operations like `resync!` require explicit confirmation
+- **Complete API Coverage** - Full CRUD operations for Groups, Connectors, and
+  Destinations
+- **Stream-based Pagination** - Efficiently iterate over thousands of resources
+  using Elixir Streams
+- **Typed Structs** - All responses are parsed into typed structs for
+  compile-time safety
+- **Structured Errors** - Pattern-matchable error types for robust error
+  handling
+- **Safety Valves** - Destructive operations like `resync!` require explicit
+  confirmation
 - **Zero Configuration** - Works out of the box with just API credentials
 
 ## Installation
@@ -32,7 +41,8 @@ end
 
 ### Creating a Client
 
-All API operations require a client configured with your Fivetran API credentials:
+All API operations require a client configured with your Fivetran API
+credentials:
 
 ```elixir
 # Create a client with explicit credentials
@@ -73,7 +83,9 @@ client = Fivetrex.client(
 
 ## Streaming
 
-Fivetrex uses Elixir Streams to handle Fivetran's cursor-based pagination transparently. This allows you to iterate over thousands of resources without loading them all into memory:
+Fivetrex uses Elixir Streams to handle Fivetran's cursor-based pagination
+transparently. This allows you to iterate over thousands of resources without
+loading them all into memory:
 
 ```elixir
 # Stream all groups
@@ -171,7 +183,9 @@ Connector.sync_state(connector) # => "scheduled" | "syncing" | "paused" | nil
 
 ## Error Handling
 
-All API functions return `{:ok, result}` on success or `{:error, %Fivetrex.Error{}}` on failure. Errors are structured for easy pattern matching:
+All API functions return `{:ok, result}` on success or
+`{:error, %Fivetrex.Error{}}` on failure. Errors are structured for easy pattern
+matching:
 
 ```elixir
 case Fivetrex.Connectors.get(client, "connector_id") do
@@ -205,58 +219,59 @@ end
 
 ### Error Types
 
-| Type | HTTP Status | Description |
-|------|-------------|-------------|
-| `:unauthorized` | 401 | Invalid or missing API credentials |
-| `:not_found` | 404 | Resource does not exist |
-| `:rate_limited` | 429 | Too many requests (check `retry_after`) |
-| `:server_error` | 5xx | Fivetran server error |
-| `:unknown` | Other | Unexpected error |
+| Type            | HTTP Status | Description                             |
+| --------------- | ----------- | --------------------------------------- |
+| `:unauthorized` | 401         | Invalid or missing API credentials      |
+| `:not_found`    | 404         | Resource does not exist                 |
+| `:rate_limited` | 429         | Too many requests (check `retry_after`) |
+| `:server_error` | 5xx         | Fivetran server error                   |
+| `:unknown`      | Other       | Unexpected error                        |
 
 ## API Reference
 
 ### Groups
 
-| Function | Description |
-|----------|-------------|
-| `Fivetrex.Groups.list/2` | List all groups with pagination |
+| Function                   | Description                            |
+| -------------------------- | -------------------------------------- |
+| `Fivetrex.Groups.list/2`   | List all groups with pagination        |
 | `Fivetrex.Groups.stream/2` | Stream all groups (handles pagination) |
-| `Fivetrex.Groups.get/2` | Get a group by ID |
-| `Fivetrex.Groups.create/2` | Create a new group |
-| `Fivetrex.Groups.update/3` | Update a group |
-| `Fivetrex.Groups.delete/2` | Delete a group |
+| `Fivetrex.Groups.get/2`    | Get a group by ID                      |
+| `Fivetrex.Groups.create/2` | Create a new group                     |
+| `Fivetrex.Groups.update/3` | Update a group                         |
+| `Fivetrex.Groups.delete/2` | Delete a group                         |
 
 ### Connectors
 
-| Function | Description |
-|----------|-------------|
-| `Fivetrex.Connectors.list/3` | List connectors in a group |
-| `Fivetrex.Connectors.stream/3` | Stream all connectors in a group |
-| `Fivetrex.Connectors.get/2` | Get a connector by ID |
-| `Fivetrex.Connectors.create/2` | Create a new connector |
-| `Fivetrex.Connectors.update/3` | Update a connector |
-| `Fivetrex.Connectors.delete/2` | Delete a connector |
-| `Fivetrex.Connectors.sync/2` | Trigger an incremental sync |
-| `Fivetrex.Connectors.resync!/3` | Trigger a historical resync (destructive!) |
-| `Fivetrex.Connectors.get_state/2` | Get connector sync state |
-| `Fivetrex.Connectors.pause/2` | Pause a connector |
-| `Fivetrex.Connectors.resume/2` | Resume a paused connector |
+| Function                          | Description                                |
+| --------------------------------- | ------------------------------------------ |
+| `Fivetrex.Connectors.list/3`      | List connectors in a group                 |
+| `Fivetrex.Connectors.stream/3`    | Stream all connectors in a group           |
+| `Fivetrex.Connectors.get/2`       | Get a connector by ID                      |
+| `Fivetrex.Connectors.create/2`    | Create a new connector                     |
+| `Fivetrex.Connectors.update/3`    | Update a connector                         |
+| `Fivetrex.Connectors.delete/2`    | Delete a connector                         |
+| `Fivetrex.Connectors.sync/2`      | Trigger an incremental sync                |
+| `Fivetrex.Connectors.resync!/3`   | Trigger a historical resync (destructive!) |
+| `Fivetrex.Connectors.get_state/2` | Get connector sync state                   |
+| `Fivetrex.Connectors.pause/2`     | Pause a connector                          |
+| `Fivetrex.Connectors.resume/2`    | Resume a paused connector                  |
 
 ### Destinations
 
-| Function | Description |
-|----------|-------------|
-| `Fivetrex.Destinations.get/2` | Get a destination by ID |
-| `Fivetrex.Destinations.create/2` | Create a new destination |
-| `Fivetrex.Destinations.update/3` | Update a destination |
-| `Fivetrex.Destinations.delete/2` | Delete a destination |
-| `Fivetrex.Destinations.test/2` | Run destination connection tests |
+| Function                         | Description                      |
+| -------------------------------- | -------------------------------- |
+| `Fivetrex.Destinations.get/2`    | Get a destination by ID          |
+| `Fivetrex.Destinations.create/2` | Create a new destination         |
+| `Fivetrex.Destinations.update/3` | Update a destination             |
+| `Fivetrex.Destinations.delete/2` | Delete a destination             |
+| `Fivetrex.Destinations.test/2`   | Run destination connection tests |
 
 ## Configuration
 
 ### Runtime Configuration
 
-Fivetrex is designed for runtime configuration. Create clients with credentials at runtime rather than compile-time:
+Fivetrex is designed for runtime configuration. Create clients with credentials
+at runtime rather than compile-time:
 
 ```elixir
 # In your application code
@@ -287,17 +302,21 @@ client = Fivetrex.client(
 )
 ```
 
-## Testing
-
-Fivetrex uses [Bypass](https://hexdocs.pm/bypass) for integration testing. See the test suite for examples of mocking Fivetran API responses.
+## Development
 
 ```bash
+# Run all checks (format, credo, compile, test)
+mix precommit
+
 # Run tests
 mix test
 
 # Run tests with coverage
 mix test --cover
 ```
+
+Fivetrex uses [Bypass](https://hexdocs.pm/bypass) for integration testing. See
+the test suite for examples of mocking Fivetran API responses.
 
 ## Documentation
 
