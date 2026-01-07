@@ -13,11 +13,22 @@ defmodule Fivetrex.Integration.DestinationsTest do
     # Get the first group (group_id == destination_id in Fivetran)
     {:ok, %{items: [group | _]}} = Fivetrex.Groups.list(client)
 
-    {:ok, client: client, destination_id: group.id}
+    # Check if destination exists for this group
+    destination_exists =
+      case Fivetrex.Destinations.get(client, group.id) do
+        {:ok, _} -> true
+        {:error, _} -> false
+      end
+
+    {:ok, client: client, destination_id: group.id, destination_exists: destination_exists}
   end
 
   describe "read operations" do
-    test "gets a destination", %{client: client, destination_id: destination_id} do
+    test "gets a destination", %{
+      client: client,
+      destination_id: destination_id,
+      destination_exists: exists
+    } do
       case Fivetrex.Destinations.get(client, destination_id) do
         {:ok, destination} ->
           assert %Destination{} = destination
@@ -25,14 +36,16 @@ defmodule Fivetrex.Integration.DestinationsTest do
           assert is_binary(destination.service) or is_nil(destination.service)
 
         {:error, %Fivetrex.Error{type: :not_found}} ->
-          # Destination may not exist for this group, which is valid
-          assert true
+          unless exists do
+            IO.puts("\n    [INFO] No destination configured for group #{destination_id}")
+          end
       end
     end
 
     test "destination has expected fields when present", %{
       client: client,
-      destination_id: destination_id
+      destination_id: destination_id,
+      destination_exists: exists
     } do
       case Fivetrex.Destinations.get(client, destination_id) do
         {:ok, destination} ->
@@ -50,7 +63,9 @@ defmodule Fivetrex.Integration.DestinationsTest do
           end
 
         {:error, %Fivetrex.Error{type: :not_found}} ->
-          assert true
+          unless exists do
+            IO.puts("\n    [INFO] No destination configured - skipping field validation")
+          end
       end
     end
   end
@@ -94,9 +109,9 @@ defmodule Fivetrex.Integration.DestinationsTest do
                 assert Map.has_key?(test_result, "setup_status") or
                          Map.has_key?(test_result, "setup_tests")
 
-              {:error, %Fivetrex.Error{}} ->
+              {:error, %Fivetrex.Error{} = error} ->
                 # Test might fail if service isn't fully configured
-                assert true
+                IO.puts("\n    [INFO] Destination test failed: #{error.message}")
             end
 
             # UPDATE destination
@@ -107,9 +122,9 @@ defmodule Fivetrex.Integration.DestinationsTest do
                 assert %Destination{} = updated
                 assert updated.id == destination_id
 
-              {:error, %Fivetrex.Error{}} ->
+              {:error, %Fivetrex.Error{} = error} ->
                 # Some destinations may not support certain updates
-                assert true
+                IO.puts("\n    [INFO] Destination update failed: #{error.message}")
             end
 
             # DELETE destination
@@ -119,15 +134,17 @@ defmodule Fivetrex.Integration.DestinationsTest do
                 assert {:error, %Fivetrex.Error{type: :not_found}} =
                          Fivetrex.Destinations.get(client, destination_id)
 
-              {:error, %Fivetrex.Error{}} ->
+              {:error, %Fivetrex.Error{} = error} ->
                 # Deletion might fail if there are dependencies
-                assert true
+                IO.puts("\n    [INFO] Destination delete failed: #{error.message}")
             end
 
-          {:error, %Fivetrex.Error{}} ->
+          {:error, %Fivetrex.Error{} = error} ->
             # Creating destinations may fail depending on account permissions
             # or if the service type isn't available
-            :skipped
+            IO.puts(
+              "\n    [SKIPPED] Cannot create managed_bigquery destination: #{error.message}"
+            )
         end
       after
         # Cleanup: delete the test group
@@ -137,23 +154,23 @@ defmodule Fivetrex.Integration.DestinationsTest do
   end
 
   describe "connection testing" do
-    test "tests destination connection", %{client: client, destination_id: destination_id} do
-      # First check if destination exists
-      case Fivetrex.Destinations.get(client, destination_id) do
-        {:ok, _destination} ->
-          # Test the connection
-          case Fivetrex.Destinations.test(client, destination_id) do
-            {:ok, result} ->
-              assert is_map(result)
+    test "tests destination connection", %{
+      client: client,
+      destination_id: destination_id,
+      destination_exists: exists
+    } do
+      if exists do
+        # Test the connection
+        case Fivetrex.Destinations.test(client, destination_id) do
+          {:ok, result} ->
+            assert is_map(result)
 
-            {:error, %Fivetrex.Error{}} ->
-              # Test might fail for various reasons (not fully configured, etc.)
-              assert true
-          end
-
-        {:error, %Fivetrex.Error{type: :not_found}} ->
-          # No destination to test
-          assert true
+          {:error, %Fivetrex.Error{} = error} ->
+            # Test might fail for various reasons (not fully configured, etc.)
+            IO.puts("\n    [INFO] Connection test failed: #{error.message}")
+        end
+      else
+        IO.puts("\n    [SKIPPED] No destination configured - cannot test connection")
       end
     end
   end

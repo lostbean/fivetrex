@@ -7,13 +7,32 @@ defmodule Fivetrex.Integration.ConnectorsTest do
 
   alias Fivetrex.Models.Connector
 
+  @no_connector_message "[SKIPPED] No connectors in test account. Create a connector to test this functionality."
+
   setup do
     client = integration_client()
 
     # Get the first group to use for connector tests
     {:ok, %{items: [group | _]}} = Fivetrex.Groups.list(client)
 
-    {:ok, client: client, group_id: group.id}
+    # Find first connector (if any) by checking all groups
+    connector_id = find_first_connector(client)
+
+    {:ok, client: client, group_id: group.id, connector_id: connector_id}
+  end
+
+  # Search across all groups to find any connector
+  defp find_first_connector(client) do
+    client
+    |> Fivetrex.Groups.stream()
+    |> Stream.flat_map(fn group ->
+      case Fivetrex.Connectors.list(client, group.id, limit: 1) do
+        {:ok, %{items: [connector | _]}} -> [connector.id]
+        _ -> []
+      end
+    end)
+    |> Enum.take(1)
+    |> List.first()
   end
 
   describe "read operations" do
@@ -31,35 +50,25 @@ defmodule Fivetrex.Integration.ConnectorsTest do
       assert is_list(connectors)
     end
 
-    test "gets a single connector", %{client: client, group_id: group_id} do
-      case Fivetrex.Connectors.list(client, group_id) do
-        {:ok, %{items: [connector | _]}} ->
-          assert {:ok, fetched} = Fivetrex.Connectors.get(client, connector.id)
-          assert %Connector{} = fetched
-          assert fetched.id == connector.id
-          assert fetched.service != nil
-
-        {:ok, %{items: []}} ->
-          # No connectors in this group, skip test
-          assert true
+    @tag :requires_connector
+    test "gets a single connector", %{client: client, connector_id: connector_id} do
+      if is_nil(connector_id) do
+        IO.puts("\n    #{@no_connector_message}")
+      else
+        assert {:ok, fetched} = Fivetrex.Connectors.get(client, connector_id)
+        assert %Connector{} = fetched
+        assert fetched.id == connector_id
+        assert fetched.service != nil
       end
     end
   end
 
   describe "sync operations" do
-    setup %{client: client, group_id: group_id} do
-      # Find a connector to test with
-      case Fivetrex.Connectors.list(client, group_id) do
-        {:ok, %{items: [connector | _]}} ->
-          {:ok, connector_id: connector.id}
-
-        {:ok, %{items: []}} ->
-          {:ok, connector_id: nil}
-      end
-    end
-
+    @tag :requires_connector
     test "gets connector state", %{client: client, connector_id: connector_id} do
-      if connector_id do
+      if is_nil(connector_id) do
+        IO.puts("\n    #{@no_connector_message}")
+      else
         # Note: get_state endpoint may not be available for all connector types
         # or may require specific permissions
         case Fivetrex.Connectors.get_state(client, connector_id) do
@@ -67,21 +76,23 @@ defmodule Fivetrex.Integration.ConnectorsTest do
             assert is_map(state)
 
           {:error, %Fivetrex.Error{status: 405}} ->
-            # Method not allowed - endpoint may not be available
-            assert true
+            # Method not allowed - endpoint may not be available for this connector type
+            IO.puts("\n    [INFO] get_state returned 405 - not available for this connector type")
 
           {:error, %Fivetrex.Error{type: :not_found}} ->
             # State not available for this connector
-            assert true
+            IO.puts(
+              "\n    [INFO] get_state returned 404 - state not available for this connector"
+            )
         end
-      else
-        # No connectors to test with
-        assert true
       end
     end
 
+    @tag :requires_connector
     test "pauses and resumes a connector", %{client: client, connector_id: connector_id} do
-      if connector_id do
+      if is_nil(connector_id) do
+        IO.puts("\n    #{@no_connector_message}")
+      else
         # Get initial state
         {:ok, initial} = Fivetrex.Connectors.get(client, connector_id)
 
@@ -103,14 +114,14 @@ defmodule Fivetrex.Integration.ConnectorsTest do
             Fivetrex.Connectors.resume(client, connector_id)
           end
         end
-      else
-        # No connectors to test with
-        assert true
       end
     end
 
+    @tag :requires_connector
     test "triggers a sync", %{client: client, connector_id: connector_id} do
-      if connector_id do
+      if is_nil(connector_id) do
+        IO.puts("\n    #{@no_connector_message}")
+      else
         # Trigger sync - returns immediately, sync runs async
         case Fivetrex.Connectors.sync(client, connector_id) do
           {:ok, result} ->
@@ -121,17 +132,17 @@ defmodule Fivetrex.Integration.ConnectorsTest do
 
           {:error, %Fivetrex.Error{} = error} ->
             # Sync might fail if connector is paused, not connected, etc.
-            # This is acceptable for this test
+            IO.puts("\n    [INFO] sync failed with #{error.type}: #{error.message}")
             assert error.type in [:unknown, :server_error]
         end
-      else
-        # No connectors to test with
-        assert true
       end
     end
 
+    @tag :requires_connector
     test "checks sync state with helper functions", %{client: client, connector_id: connector_id} do
-      if connector_id do
+      if is_nil(connector_id) do
+        IO.puts("\n    #{@no_connector_message}")
+      else
         {:ok, connector} = Fivetrex.Connectors.get(client, connector_id)
 
         # Test helper functions work on real connector data
@@ -144,8 +155,6 @@ defmodule Fivetrex.Integration.ConnectorsTest do
         # syncing? and paused? should be boolean
         assert is_boolean(syncing)
         assert is_boolean(paused)
-      else
-        assert true
       end
     end
   end

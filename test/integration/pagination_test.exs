@@ -88,6 +88,8 @@ defmodule Fivetrex.Integration.PaginationTest do
   end
 
   describe "Connectors pagination" do
+    @no_connectors_message "[SKIPPED] No groups with connectors found - cannot test connector pagination"
+
     setup %{client: client} do
       # Get a group that has connectors
       {:ok, %{items: groups}} = Fivetrex.Groups.list(client)
@@ -104,8 +106,11 @@ defmodule Fivetrex.Integration.PaginationTest do
       {:ok, group: group_with_connectors}
     end
 
+    @tag :requires_connector
     test "list/3 returns paginated results with cursor", %{client: client, group: group} do
-      if group do
+      if is_nil(group) do
+        IO.puts("\n    #{@no_connectors_message}")
+      else
         case Fivetrex.Connectors.list(client, group.id, limit: 2) do
           {:ok, %{items: items, next_cursor: next_cursor}} ->
             assert is_list(items)
@@ -122,14 +127,14 @@ defmodule Fivetrex.Integration.PaginationTest do
           {:ok, %{items: items}} ->
             assert is_list(items)
         end
-      else
-        # No groups with connectors found
-        assert true
       end
     end
 
+    @tag :requires_connector
     test "stream/3 iterates through connectors", %{client: client, group: group} do
-      if group do
+      if is_nil(group) do
+        IO.puts("\n    #{@no_connectors_message}")
+      else
         connectors =
           client
           |> Fivetrex.Connectors.stream(group.id, limit: 2)
@@ -141,8 +146,6 @@ defmodule Fivetrex.Integration.PaginationTest do
         # Verify unique IDs
         ids = Enum.map(connectors, & &1.id)
         assert ids == Enum.uniq(ids)
-      else
-        assert true
       end
     end
 
@@ -158,7 +161,13 @@ defmodule Fivetrex.Integration.PaginationTest do
         |> Enum.take(10)
 
       assert is_list(all_connectors)
-      assert Enum.all?(all_connectors, fn c -> %Connector{} = c end)
+
+      # May be empty if no connectors exist
+      if all_connectors != [] do
+        assert Enum.all?(all_connectors, fn c -> %Connector{} = c end)
+      else
+        IO.puts("\n    [INFO] No connectors found across groups")
+      end
     end
   end
 
