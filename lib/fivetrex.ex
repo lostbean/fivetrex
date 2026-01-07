@@ -13,6 +13,7 @@ defmodule Fivetrex do
     * **Stream-based Pagination** - Efficiently iterate over thousands of resources using Elixir Streams
     * **Typed Structs** - All responses are parsed into typed structs for compile-time safety
     * **Structured Errors** - Pattern-matchable error types for robust error handling
+    * **Built-in Retry** - Automatic retry with exponential backoff for transient failures
     * **Safety Valves** - Destructive operations like `resync!` require explicit confirmation
 
   ## Quick Start
@@ -53,6 +54,38 @@ defmodule Fivetrex do
       |> Stream.filter(&Fivetrex.Models.Connector.syncing?/1)
       |> Enum.to_list()
 
+  ## Handling Rate Limits and Transient Errors
+
+  Use `Fivetrex.with_retry/2` to automatically retry on rate limits and server errors:
+
+      # Retry with default settings (3 attempts, exponential backoff)
+      {:ok, %{items: groups}} = Fivetrex.with_retry(fn ->
+        Fivetrex.Groups.list(client)
+      end)
+
+      # Custom retry options
+      {:ok, connector} = Fivetrex.with_retry(
+        fn -> Fivetrex.Connectors.get(client, "connector_id") end,
+        max_attempts: 5,
+        jitter: true
+      )
+
+      # With retry logging
+      {:ok, _} = Fivetrex.with_retry(
+        fn -> Fivetrex.Connectors.sync(client, connector_id) end,
+        on_retry: fn error, attempt, delay ->
+          Logger.warning("Retry \#{attempt}: \#{error.message}, waiting \#{delay}ms")
+        end
+      )
+
+  The retry mechanism:
+    * Automatically retries on `:rate_limited` and `:server_error` errors
+    * Respects Fivetran's `retry-after` header for rate limits
+    * Uses exponential backoff (1s, 2s, 4s, ...) capped at 30 seconds
+    * Does NOT retry on `:unauthorized`, `:not_found`, or `:unknown` errors
+
+  See `Fivetrex.Retry` for advanced configuration options.
+
   ## Error Handling
 
   All API functions return `{:ok, result}` on success or `{:error, %Fivetrex.Error{}}`
@@ -87,6 +120,7 @@ defmodule Fivetrex do
   """
 
   alias Fivetrex.Client
+  alias Fivetrex.Retry
 
   @doc """
   Creates a new Fivetrex client with the given credentials.
@@ -138,5 +172,67 @@ defmodule Fivetrex do
   @spec client(keyword()) :: Client.t()
   def client(opts) do
     Client.new(opts)
+  end
+
+  @doc """
+  Executes a function with automatic retry and exponential backoff.
+
+  This is a convenience wrapper around `Fivetrex.Retry.with_backoff/2`. Use it
+  to handle transient failures like rate limits and server errors automatically.
+
+  ## Parameters
+
+    * `func` - A zero-arity function that returns `{:ok, result}` or `{:error, %Fivetrex.Error{}}`
+    * `opts` - Optional keyword list:
+      * `:max_attempts` - Maximum number of attempts (default: 3)
+      * `:base_delay_ms` - Initial delay in milliseconds (default: 1000)
+      * `:max_delay_ms` - Maximum delay cap in milliseconds (default: 30000)
+      * `:jitter` - Add random jitter to delays (default: false)
+      * `:retry_if` - Custom function to determine if error is retryable
+      * `:on_retry` - Callback function called before each retry
+
+  ## Returns
+
+    * `{:ok, result}` - The successful result from `func`
+    * `{:error, %Fivetrex.Error{}}` - The last error after all retries exhausted
+
+  ## Examples
+
+      # Basic usage - retry Groups.list on rate limits
+      {:ok, %{items: groups}} = Fivetrex.with_retry(fn ->
+        Fivetrex.Groups.list(client)
+      end)
+
+      # With custom options
+      {:ok, connector} = Fivetrex.with_retry(
+        fn -> Fivetrex.Connectors.get(client, "connector_id") end,
+        max_attempts: 5,
+        jitter: true
+      )
+
+      # With logging callback
+      {:ok, _} = Fivetrex.with_retry(
+        fn -> Fivetrex.Connectors.sync(client, connector_id) end,
+        on_retry: fn error, attempt, delay ->
+          IO.puts("Retry \#{attempt} after \#{delay}ms: \#{error.message}")
+        end
+      )
+
+  ## Retryable Errors
+
+  By default, these error types are retried:
+    * `:rate_limited` - Respects `retry_after` header when available
+    * `:server_error` - 5xx errors are typically transient
+
+  Non-retryable errors (returned immediately):
+    * `:unauthorized` - Invalid credentials won't become valid
+    * `:not_found` - Resource doesn't exist
+    * `:unknown` - Unexpected errors need investigation
+
+  """
+  @spec with_retry((-> {:ok, any()} | {:error, Fivetrex.Error.t()}), Retry.retry_opts()) ::
+          {:ok, any()} | {:error, Fivetrex.Error.t()}
+  def with_retry(func, opts \\ []) do
+    Retry.with_backoff(func, opts)
   end
 end
