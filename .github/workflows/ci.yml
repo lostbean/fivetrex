@@ -1,0 +1,83 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+env:
+  MIX_ENV: test
+jobs:
+  test:
+    name: Test (Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - elixir: "1.18"
+            otp: "27"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: _build
+          key: ${{ runner.os }}-build-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ matrix.elixir }}-${{ matrix.otp }}-
+      - name: Install dependencies
+        run: mix deps.get
+      - name: Check formatting
+        run: mix format --check-formatted
+      - name: Run Credo
+        run: mix credo --strict
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+      - name: Run unit tests
+        run: mix test
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Only run if secrets are available (not on forks)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: _build
+          key: ${{ runner.os }}-build-1.18-27-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-build-1.18-27-
+      - name: Install dependencies
+        run: mix deps.get
+      - name: Run integration tests
+        env:
+          FIVETRAN_API_KEY: ${{ secrets.FIVETRAN_API_KEY }}
+          FIVETRAN_API_SECRET: ${{ secrets.FIVETRAN_API_SECRET }}
+        run: mix test --include integration
