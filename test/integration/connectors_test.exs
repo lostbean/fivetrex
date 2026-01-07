@@ -114,7 +114,10 @@ defmodule Fivetrex.Integration.ConnectorsTest do
         # Trigger sync - returns immediately, sync runs async
         case Fivetrex.Connectors.sync(client, connector_id) do
           {:ok, result} ->
+            # Verify normalized response shape
             assert is_map(result)
+            assert Map.has_key?(result, :success)
+            assert result.success == true
 
           {:error, %Fivetrex.Error{} = error} ->
             # Sync might fail if connector is paused, not connected, etc.

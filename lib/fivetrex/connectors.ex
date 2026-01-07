@@ -305,6 +305,19 @@ defmodule Fivetrex.Connectors do
     end
   end
 
+  @typedoc """
+  Result of a sync operation.
+
+    * `:success` - Whether the sync was triggered successfully
+    * `:message` - Optional message from the API
+    * `:sync_state` - Current sync state after triggering (if available)
+  """
+  @type sync_result :: %{
+          success: boolean(),
+          message: String.t() | nil,
+          sync_state: String.t() | nil
+        }
+
   @doc """
   Triggers an incremental sync for a connector.
 
@@ -318,26 +331,44 @@ defmodule Fivetrex.Connectors do
 
   ## Returns
 
-    * `{:ok, map()}` - Sync triggered successfully
+    * `{:ok, sync_result()}` - Sync triggered successfully. Returns a map with:
+      * `:success` - Always `true` on success
+      * `:message` - Optional message from the API
+      * `:sync_state` - Current sync state if available
+
     * `{:error, Fivetrex.Error.t()}` - On failure
 
   ## Examples
 
-      {:ok, _} = Fivetrex.Connectors.sync(client, "connector_id")
+      {:ok, %{success: true}} = Fivetrex.Connectors.sync(client, "connector_id")
+
+      # With full result inspection
+      case Fivetrex.Connectors.sync(client, connector_id) do
+        {:ok, %{success: true, sync_state: state}} ->
+          IO.puts("Sync triggered, state: \#{state}")
+
+        {:error, error} ->
+          IO.puts("Sync failed: \#{error.message}")
+      end
 
   """
-  @spec sync(Client.t(), String.t()) :: {:ok, map()} | {:error, Fivetrex.Error.t()}
+  @spec sync(Client.t(), String.t()) :: {:ok, sync_result()} | {:error, Fivetrex.Error.t()}
   def sync(client, connector_id) do
     case Client.post(client, "/connectors/#{connector_id}/sync") do
-      {:ok, %{"code" => "Success"} = response} ->
-        {:ok, response}
-
-      {:ok, %{"data" => data}} ->
-        {:ok, data}
+      {:ok, response} ->
+        {:ok, normalize_sync_response(response)}
 
       {:error, _} = error ->
         error
     end
+  end
+
+  defp normalize_sync_response(response) do
+    %{
+      success: response["code"] == "Success" or Map.has_key?(response, "data"),
+      message: response["message"],
+      sync_state: get_in(response, ["data", "status", "sync_state"])
+    }
   end
 
   @doc """

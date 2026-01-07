@@ -128,7 +128,7 @@ defmodule Fivetrex.ConnectorsTest do
   end
 
   describe "sync/2" do
-    test "triggers a sync", %{bypass: bypass, client: client} do
+    test "triggers a sync and returns normalized response", %{bypass: bypass, client: client} do
       # Real Fivetran API returns {"code": "Success", "message": "..."} for sync
       response = Jason.encode!(%{"code" => "Success", "message" => "Sync triggered"})
 
@@ -138,7 +138,40 @@ defmodule Fivetrex.ConnectorsTest do
         |> Plug.Conn.resp(200, response)
       end)
 
-      assert {:ok, %{"code" => "Success", "message" => "Sync triggered"}} =
+      assert {:ok, %{success: true, message: "Sync triggered"}} =
+               Connectors.sync(client, "c1")
+    end
+
+    test "extracts sync_state from data response", %{bypass: bypass, client: client} do
+      # Some API responses include data with status
+      response =
+        Jason.encode!(%{
+          "code" => "Success",
+          "data" => %{
+            "status" => %{"sync_state" => "syncing"}
+          }
+        })
+
+      Bypass.expect_once(bypass, "POST", "/connectors/c1/sync", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, response)
+      end)
+
+      assert {:ok, %{success: true, sync_state: "syncing"}} =
+               Connectors.sync(client, "c1")
+    end
+
+    test "handles response with data but no status", %{bypass: bypass, client: client} do
+      response = Jason.encode!(%{"data" => %{"id" => "c1"}})
+
+      Bypass.expect_once(bypass, "POST", "/connectors/c1/sync", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, response)
+      end)
+
+      assert {:ok, %{success: true, message: nil, sync_state: nil}} =
                Connectors.sync(client, "c1")
     end
   end
