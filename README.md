@@ -13,8 +13,12 @@ handling, and a clean functional API.
 
 ## Features
 
-- **Core API Coverage** - Full CRUD operations for Groups, Connectors, and
-  Destinations
+- **Core API Coverage** - Full CRUD operations for Groups, Connectors,
+  Destinations, and Webhooks
+- **Webhook Support** - Create/manage webhooks with HMAC-SHA256 signature
+  verification and a ready-to-use Plug for Phoenix
+- **Schema Metadata** - Query and configure connector schema, table, and column
+  settings
 - **Stream-based Pagination** - Efficiently iterate over thousands of resources
   using Elixir Streams
 - **Typed Structs** - All responses are parsed into typed structs for
@@ -32,22 +36,22 @@ handling, and a clean functional API.
 Fivetrex covers the core Fivetran API resources needed for managing data
 pipelines:
 
-| Fivetran API Resource | Status  | Functions                                                                                                |
-| --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| **Groups**            | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`                                                    |
-| **Connectors**        | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`, `sync`, `resync!`, `pause`, `resume`, `get_state` |
-| **Destinations**      | ✅ Full | `get`, `create`, `update`, `delete`, `test`                                                              |
-| Users                 | ❌      | Not implemented                                                                                          |
-| Teams                 | ❌      | Not implemented                                                                                          |
-| Roles                 | ❌      | Not implemented                                                                                          |
-| Transformations       | ❌      | Not implemented                                                                                          |
-| Webhooks (outgoing)   | ❌      | Not implemented                                                                                          |
-| Certificates          | ❌      | Not implemented                                                                                          |
-| Log Services          | ❌      | Not implemented                                                                                          |
+| Fivetran API Resource | Status  | Functions                                                                                                                                                                                                                                   |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Groups**            | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`                                                                                                                                                                                       |
+| **Connectors**        | ✅ Full | `list`, `stream`, `get`, `create`, `update`, `delete`, `sync`, `resync!`, `pause`, `resume`, `get_state`, `get_sync_status`, `get_schema_config`, `update_schema_config`, `reload_schema_config`, `get_table_columns`, `set_sync_frequency` |
+| **Destinations**      | ✅ Full | `get`, `create`, `update`, `delete`, `test`                                                                                                                                                                                                 |
+| **Webhooks**          | ✅ Full | `list`, `stream`, `get`, `create_account`, `create_group`, `update`, `delete`, `test`                                                                                                                                                       |
+| Users                 | ❌      | Not implemented                                                                                                                                                                                                                             |
+| Teams                 | ❌      | Not implemented                                                                                                                                                                                                                             |
+| Roles                 | ❌      | Not implemented                                                                                                                                                                                                                             |
+| Transformations       | ❌      | Not implemented                                                                                                                                                                                                                             |
+| Certificates          | ❌      | Not implemented                                                                                                                                                                                                                             |
+| Log Services          | ❌      | Not implemented                                                                                                                                                                                                                             |
 
-> **Note:** The implemented resources (Groups, Connectors, Destinations) cover
-> the most commonly used Fivetran functionality for managing data pipelines
-> programmatically.
+> **Note:** The implemented resources (Groups, Connectors, Destinations,
+> Webhooks) cover the most commonly used Fivetran functionality for managing
+> data pipelines programmatically.
 
 ## Installation
 
@@ -56,7 +60,7 @@ Add `fivetrex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:fivetrex, "~> 0.1.0"}
+    {:fivetrex, "~> 0.2.0"}
   ]
 end
 ```
@@ -205,6 +209,132 @@ Connector.sync_state(connector) # => "scheduled" | "syncing" | "paused" | nil
 {:ok, result} = Fivetrex.Destinations.test(client, destination.id)
 ```
 
+## Working with Webhooks
+
+Webhooks provide real-time notifications about Fivetran events like sync starts
+and completions.
+
+### Creating Webhooks
+
+```elixir
+# Create an account-level webhook (receives events for all connectors)
+{:ok, webhook} = Fivetrex.Webhooks.create_account(client, %{
+  url: "https://example.com/fivetran/webhook",
+  events: ["sync_start", "sync_end"],
+  active: true,
+  secret: "my_webhook_secret"
+})
+
+# Create a group-level webhook (receives events for connectors in that group)
+{:ok, webhook} = Fivetrex.Webhooks.create_group(client, "group_id", %{
+  url: "https://example.com/fivetran/webhook",
+  events: ["sync_end"],
+  active: true
+})
+
+# List all webhooks
+{:ok, %{items: webhooks}} = Fivetrex.Webhooks.list(client)
+
+# Test a webhook
+{:ok, _} = Fivetrex.Webhooks.test(client, webhook.id)
+```
+
+### Handling Incoming Webhooks
+
+Fivetrex includes a Plug for Phoenix/Bandit applications that handles signature
+verification automatically:
+
+```elixir
+# In your Phoenix controller
+defmodule MyAppWeb.FivetranWebhookController do
+  use MyAppWeb, :controller
+
+  plug Fivetrex.WebhookPlug,
+    secret: {MyApp.Config, :fivetran_webhook_secret, []}
+
+  def receive(conn, _params) do
+    event = conn.assigns.fivetran_event
+
+    case event.event do
+      "sync_end" -> handle_sync_completion(event)
+      "sync_start" -> handle_sync_start(event)
+      _ -> :ok
+    end
+
+    json(conn, %{status: "ok"})
+  end
+end
+```
+
+For manual signature verification:
+
+```elixir
+# Verify webhook signature
+case Fivetrex.WebhookSignature.verify(raw_body, signature, secret) do
+  :ok -> process_webhook(payload)
+  {:error, :invalid_signature} -> reject_request()
+  {:error, :missing_signature} -> reject_request()
+end
+```
+
+## Schema Metadata
+
+Query and configure which schemas, tables, and columns are synced.
+
+```elixir
+# Get schema configuration for a connector
+{:ok, config} = Fivetrex.Connectors.get_schema_config(client, "connector_id")
+
+# Iterate through schemas and tables
+for {schema_name, schema} <- config.schemas, schema.enabled do
+  IO.puts("Schema: #{schema_name}")
+
+  for {table_name, table} <- schema.tables, table.enabled do
+    IO.puts("  Table: #{table_name} (#{table.sync_mode})")
+  end
+end
+
+# Get columns for a specific table
+{:ok, columns} = Fivetrex.Connectors.get_table_columns(
+  client,
+  "connector_id",
+  "schema_name",
+  "table_name"
+)
+
+# Update schema configuration
+{:ok, updated} = Fivetrex.Connectors.update_schema_config(client, "connector_id", %{
+  schemas: %{
+    "public" => %{
+      enabled: true,
+      tables: %{
+        "users" => %{enabled: true},
+        "logs" => %{enabled: false}
+      }
+    }
+  }
+})
+
+# Reload schema (detect new tables/columns from source)
+{:ok, config} = Fivetrex.Connectors.reload_schema_config(client, "connector_id")
+```
+
+## Sync Status and Frequency
+
+```elixir
+# Get current sync status
+{:ok, status} = Fivetrex.Connectors.get_sync_status(client, "connector_id")
+
+if Fivetrex.Models.SyncStatus.syncing?(status) do
+  IO.puts("Sync in progress...")
+end
+
+IO.puts("Last successful sync: #{status.succeeded_at}")
+
+# Set sync frequency (in minutes)
+{:ok, connector} = Fivetrex.Connectors.set_sync_frequency(client, "connector_id", 60)
+```
+
 ## Error Handling
 
 All API functions return `{:ok, result}` on success or
@@ -266,19 +396,25 @@ end
 
 ### Connectors
 
-| Function                          | Description                                |
-| --------------------------------- | ------------------------------------------ |
-| `Fivetrex.Connectors.list/3`      | List connectors in a group                 |
-| `Fivetrex.Connectors.stream/3`    | Stream all connectors in a group           |
-| `Fivetrex.Connectors.get/2`       | Get a connector by ID                      |
-| `Fivetrex.Connectors.create/2`    | Create a new connector                     |
-| `Fivetrex.Connectors.update/3`    | Update a connector                         |
-| `Fivetrex.Connectors.delete/2`    | Delete a connector                         |
-| `Fivetrex.Connectors.sync/2`      | Trigger an incremental sync                |
-| `Fivetrex.Connectors.resync!/3`   | Trigger a historical resync (destructive!) |
-| `Fivetrex.Connectors.get_state/2` | Get connector sync state                   |
-| `Fivetrex.Connectors.pause/2`     | Pause a connector                          |
-| `Fivetrex.Connectors.resume/2`    | Resume a paused connector                  |
+| Function                                     | Description                                |
+| -------------------------------------------- | ------------------------------------------ |
+| `Fivetrex.Connectors.list/3`                 | List connectors in a group                 |
+| `Fivetrex.Connectors.stream/3`               | Stream all connectors in a group           |
+| `Fivetrex.Connectors.get/2`                  | Get a connector by ID                      |
+| `Fivetrex.Connectors.create/2`               | Create a new connector                     |
+| `Fivetrex.Connectors.update/3`               | Update a connector                         |
+| `Fivetrex.Connectors.delete/2`               | Delete a connector                         |
+| `Fivetrex.Connectors.sync/2`                 | Trigger an incremental sync                |
+| `Fivetrex.Connectors.resync!/3`              | Trigger a historical resync (destructive!) |
+| `Fivetrex.Connectors.get_state/2`            | Get connector sync state                   |
+| `Fivetrex.Connectors.pause/2`                | Pause a connector                          |
+| `Fivetrex.Connectors.resume/2`               | Resume a paused connector                  |
+| `Fivetrex.Connectors.get_sync_status/2`      | Get sync status summary                    |
+| `Fivetrex.Connectors.set_sync_frequency/3`   | Set sync frequency in minutes              |
+| `Fivetrex.Connectors.get_schema_config/2`    | Get schema/table/column configuration      |
+| `Fivetrex.Connectors.update_schema_config/3` | Update schema configuration                |
+| `Fivetrex.Connectors.reload_schema_config/2` | Reload schema from source                  |
+| `Fivetrex.Connectors.get_table_columns/4`    | Get columns for a specific table           |
 
 ### Destinations
 
@@ -289,6 +425,27 @@ end
 | `Fivetrex.Destinations.update/3` | Update a destination             |
 | `Fivetrex.Destinations.delete/2` | Delete a destination             |
 | `Fivetrex.Destinations.test/2`   | Run destination connection tests |
+
+### Webhooks
+
+| Function                             | Description                     |
+| ------------------------------------ | ------------------------------- |
+| `Fivetrex.Webhooks.list/2`           | List all webhooks               |
+| `Fivetrex.Webhooks.stream/2`         | Stream all webhooks             |
+| `Fivetrex.Webhooks.get/2`            | Get a webhook by ID             |
+| `Fivetrex.Webhooks.create_account/2` | Create an account-level webhook |
+| `Fivetrex.Webhooks.create_group/3`   | Create a group-level webhook    |
+| `Fivetrex.Webhooks.update/3`         | Update a webhook                |
+| `Fivetrex.Webhooks.delete/2`         | Delete a webhook                |
+| `Fivetrex.Webhooks.test/2`           | Send a test event to a webhook  |
+
+### Webhook Handling
+
+| Function/Module                                 | Description                        |
+| ----------------------------------------------- | ---------------------------------- |
+| `Fivetrex.WebhookPlug`                          | Plug for Phoenix webhook endpoints |
+| `Fivetrex.WebhookSignature.verify/3`            | Verify webhook signature           |
+| `Fivetrex.WebhookSignature.compute_signature/2` | Compute HMAC-SHA256 signature      |
 
 ## Configuration
 
