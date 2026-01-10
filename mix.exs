@@ -32,10 +32,13 @@ defmodule Fivetrex.MixProject do
     [
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
+      # Plug is needed for WebhookPlug - optional for users, required for docs
+      {:plug, "~> 1.14", optional: true},
       {:bypass, "~> 2.1", only: :test},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dotenvy, "~> 0.8", only: :test}
+      {:dotenvy, "~> 0.8", only: :test},
+      {:stream_data, "~> 1.0", only: :test}
     ]
   end
 
@@ -66,17 +69,34 @@ defmodule Fivetrex.MixProject do
         "API Modules": [
           Fivetrex.Groups,
           Fivetrex.Connectors,
-          Fivetrex.Destinations
+          Fivetrex.Destinations,
+          Fivetrex.Webhooks
+        ],
+        "Webhook Handling": [
+          Fivetrex.WebhookPlug,
+          Fivetrex.WebhookSignature
         ],
         Models: [
           Fivetrex.Models.Group,
           Fivetrex.Models.Connector,
-          Fivetrex.Models.Destination
+          Fivetrex.Models.Destination,
+          Fivetrex.Models.Webhook,
+          Fivetrex.Models.WebhookEvent,
+          Fivetrex.Models.SchemaConfig,
+          Fivetrex.Models.Schema,
+          Fivetrex.Models.Table,
+          Fivetrex.Models.Column,
+          Fivetrex.Models.SyncStatus,
+          Fivetrex.Models.LogEntry
+        ],
+        Guides: [
+          Fivetrex.SyncLogs
         ],
         Infrastructure: [
           Fivetrex.Client,
           Fivetrex.Error,
-          Fivetrex.Stream
+          Fivetrex.Stream,
+          Fivetrex.Retry
         ]
       ],
       nest_modules_by_prefix: [

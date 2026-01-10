@@ -513,6 +513,356 @@ defmodule Fivetrex.Connectors do
     update(client, connector_id, %{paused: false})
   end
 
+  # ===========================================================================
+  # Schema Configuration Functions
+  # ===========================================================================
+
+  alias Fivetrex.Models.Column
+  alias Fivetrex.Models.SchemaConfig
+
+  @doc """
+  Gets the schema configuration for a connector.
+
+  Returns the current schema, table, and column configuration including
+  enabled/disabled states and sync modes.
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+
+  ## Returns
+
+    * `{:ok, SchemaConfig.t()}` - The schema configuration
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Note
+
+  Only explicitly configured (non-default) columns are returned in this response.
+  For a complete column list, use `get_table_columns/4`.
+
+  ## Examples
+
+      {:ok, config} = Fivetrex.Connectors.get_schema_config(client, "connector_id")
+
+      # Iterate through schemas and tables
+      for {schema_name, schema} <- config.schemas, schema.enabled do
+        IO.puts("Schema: \#{schema_name}")
+
+        for {table_name, table} <- schema.tables, table.enabled do
+          IO.puts("  Table: \#{table_name} (sync_mode: \#{table.sync_mode})")
+        end
+      end
+
+  """
+  @spec get_schema_config(Client.t(), String.t()) ::
+          {:ok, SchemaConfig.t()} | {:error, Fivetrex.Error.t()}
+  def get_schema_config(client, connector_id) do
+    case Client.get(client, "/connectors/#{connector_id}/schemas") do
+      {:ok, %{"data" => data}} ->
+        {:ok, SchemaConfig.from_map(data)}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Gets the columns for a specific table in a connector.
+
+  Returns the complete column list for a table, including columns using
+  default settings (which may be omitted from `get_schema_config/2`).
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+    * `schema_name` - The source schema name
+    * `table_name` - The source table name
+
+  ## Returns
+
+    * `{:ok, %{String.t() => Column.t()}}` - Map of column name to Column struct
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Examples
+
+      {:ok, columns} = Fivetrex.Connectors.get_table_columns(
+        client,
+        "connector_id",
+        "public",
+        "users"
+      )
+
+      # Find primary key columns
+      primary_keys =
+        columns
+        |> Enum.filter(fn {_name, col} -> col.is_primary_key end)
+        |> Enum.map(fn {name, _col} -> name end)
+
+      # Find hashed columns
+      hashed =
+        columns
+        |> Enum.filter(fn {_name, col} -> col.hashed end)
+        |> Enum.map(fn {name, _col} -> name end)
+
+  """
+  @spec get_table_columns(Client.t(), String.t(), String.t(), String.t()) ::
+          {:ok, %{String.t() => Column.t()}} | {:error, Fivetrex.Error.t()}
+  def get_table_columns(client, connector_id, schema_name, table_name) do
+    path = "/connectors/#{connector_id}/schemas/#{schema_name}/tables/#{table_name}/columns"
+
+    case Client.get(client, path) do
+      {:ok, %{"data" => %{"columns" => columns}}} when is_map(columns) ->
+        parsed =
+          Map.new(columns, fn {name, data} ->
+            {name, Column.from_map(data)}
+          end)
+
+        {:ok, parsed}
+
+      {:ok, %{"data" => data}} when is_map(data) ->
+        # Handle case where columns might be at the top level of data
+        columns = Map.get(data, "columns", data)
+
+        parsed =
+          Map.new(columns, fn {name, col_data} ->
+            {name, Column.from_map(col_data)}
+          end)
+
+        {:ok, parsed}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Updates the schema configuration for a connector.
+
+  Use this to enable/disable schemas, tables, or columns, or to change
+  sync modes and destination names.
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+    * `params` - A map with configuration updates:
+      * `:schema_change_handling` - `"ALLOW_ALL"`, `"ALLOW_COLUMNS"`, or `"BLOCK_ALL"`
+      * `:schemas` - Map of schema configurations to update
+
+  ## Returns
+
+    * `{:ok, SchemaConfig.t()}` - The updated schema configuration
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Examples
+
+  Disable a specific table:
+
+      {:ok, config} = Fivetrex.Connectors.update_schema_config(client, "connector_id", %{
+        schemas: %{
+          "public" => %{
+            tables: %{
+              "sensitive_data" => %{enabled: false}
+            }
+          }
+        }
+      })
+
+  Hash a column for privacy:
+
+      {:ok, config} = Fivetrex.Connectors.update_schema_config(client, "connector_id", %{
+        schemas: %{
+          "public" => %{
+            tables: %{
+              "users" => %{
+                columns: %{
+                  "email" => %{hashed: true}
+                }
+              }
+            }
+          }
+        }
+      })
+
+  Change schema change handling:
+
+      {:ok, config} = Fivetrex.Connectors.update_schema_config(client, "connector_id", %{
+        schema_change_handling: "BLOCK_ALL"
+      })
+
+  """
+  @spec update_schema_config(Client.t(), String.t(), map()) ::
+          {:ok, SchemaConfig.t()} | {:error, Fivetrex.Error.t()}
+  def update_schema_config(client, connector_id, params) do
+    case Client.patch(client, "/connectors/#{connector_id}/schemas", params) do
+      {:ok, %{"data" => data}} ->
+        {:ok, SchemaConfig.from_map(data)}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Reloads the schema configuration from the source.
+
+  This fetches the latest schema from the data source and updates the
+  connector's schema configuration with any new schemas, tables, or columns.
+  This can be slow for large schemas.
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+    * `opts` - Optional keyword list:
+      * `:exclude_mode` - How to handle newly discovered items:
+        * `"PRESERVE"` (default) - Keep existing enabled/disabled settings
+        * `"INCLUDE"` - Enable all new schemas and tables
+        * `"EXCLUDE"` - Disable all new schemas and tables
+
+  ## Returns
+
+    * `{:ok, SchemaConfig.t()}` - The reloaded schema configuration
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Examples
+
+  Reload with default settings:
+
+      {:ok, config} = Fivetrex.Connectors.reload_schema_config(client, "connector_id")
+
+  Reload and enable all new items:
+
+      {:ok, config} = Fivetrex.Connectors.reload_schema_config(
+        client,
+        "connector_id",
+        exclude_mode: "INCLUDE"
+      )
+
+  Reload and disable all new items:
+
+      {:ok, config} = Fivetrex.Connectors.reload_schema_config(
+        client,
+        "connector_id",
+        exclude_mode: "EXCLUDE"
+      )
+
+  """
+  @spec reload_schema_config(Client.t(), String.t(), keyword()) ::
+          {:ok, SchemaConfig.t()} | {:error, Fivetrex.Error.t()}
+  def reload_schema_config(client, connector_id, opts \\ []) do
+    body = if mode = opts[:exclude_mode], do: %{exclude_mode: mode}, else: %{}
+
+    case Client.post(client, "/connectors/#{connector_id}/schemas/reload", body) do
+      {:ok, %{"data" => data}} ->
+        {:ok, SchemaConfig.from_map(data)}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # ===========================================================================
+  # Sync Status and Frequency Functions
+  # ===========================================================================
+
+  alias Fivetrex.Models.SyncStatus
+
+  @doc """
+  Gets a summary of the connector's current sync status.
+
+  Returns a structured view of the connector's sync state including
+  last success/failure times. For detailed sync history, configure Fivetran's
+  Log Service to send logs to your data warehouse.
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+
+  ## Returns
+
+    * `{:ok, SyncStatus.t()}` - A struct containing:
+      * `:sync_state` - Current state (e.g., `"syncing"`, `"scheduled"`)
+      * `:succeeded_at` - Last successful sync timestamp
+      * `:failed_at` - Last failed sync timestamp
+      * `:is_historical_sync` - Whether a historical sync is in progress
+      * `:update_state` - Update status
+
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Examples
+
+      {:ok, status} = Fivetrex.Connectors.get_sync_status(client, "connector_id")
+      IO.puts("Current state: \#{status.sync_state}")
+      IO.puts("Last success: \#{status.succeeded_at}")
+
+      if SyncStatus.syncing?(status) do
+        IO.puts("Sync in progress...")
+      end
+
+  """
+  @spec get_sync_status(Client.t(), String.t()) ::
+          {:ok, SyncStatus.t()} | {:error, Fivetrex.Error.t()}
+  def get_sync_status(client, connector_id) do
+    case get(client, connector_id) do
+      {:ok, connector} ->
+        {:ok, SyncStatus.from_connector(connector)}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Sets the sync frequency for a connector.
+
+  A convenience function for updating sync timing configuration.
+
+  ## Parameters
+
+    * `client` - The Fivetrex client
+    * `connector_id` - The ID of the connector
+    * `frequency_minutes` - Sync frequency in minutes
+    * `opts` - Optional keyword list:
+      * `:schedule_type` - `"auto"` or `"manual"`
+      * `:daily_sync_time` - Time for daily syncs (e.g., `"14:00"`)
+
+  ## Returns
+
+    * `{:ok, Connector.t()}` - The updated connector
+    * `{:error, Fivetrex.Error.t()}` - On failure
+
+  ## Examples
+
+  Set to sync every 60 minutes:
+
+      {:ok, connector} = Fivetrex.Connectors.set_sync_frequency(client, "id", 60)
+
+  Set daily sync at 2pm UTC:
+
+      {:ok, connector} = Fivetrex.Connectors.set_sync_frequency(client, "id", 1440,
+        schedule_type: "manual",
+        daily_sync_time: "14:00"
+      )
+
+  """
+  @spec set_sync_frequency(Client.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, Connector.t()} | {:error, Fivetrex.Error.t()}
+  def set_sync_frequency(client, connector_id, frequency_minutes, opts \\ []) do
+    params =
+      %{sync_frequency: frequency_minutes}
+      |> maybe_put(:schedule_type, opts[:schedule_type])
+      |> maybe_put(:daily_sync_time, opts[:daily_sync_time])
+
+    update(client, connector_id, params)
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
   defp build_pagination_params(opts) do
     []
     |> maybe_add_param(:cursor, opts[:cursor])
