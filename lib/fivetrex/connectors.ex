@@ -224,6 +224,25 @@ defmodule Fivetrex.Connectors do
         config: %{...}
       })
 
+  Create with Connect Card for OAuth flows:
+
+      {:ok, connector} = Fivetrex.Connectors.create(client, %{
+        group_id: "group_id",
+        service: "google_analytics_4",
+        connect_card_config: %{
+          redirect_uri: "https://your.site/callback",
+          hide_setup_guide: false
+        }
+      })
+
+      # connector.connect_card will contain:
+      # %{
+      #   "token" => "eyJ0eXAiOiJKV1QiLCJh...",
+      #   "uri" => "https://fivetran.com/connect-card/setup?auth=..."
+      # }
+
+      redirect_url = connector.connect_card["uri"]
+
   """
   @spec create(Client.t(), map()) :: {:ok, Connector.t()} | {:error, Fivetrex.Error.t()}
   def create(client, params) do

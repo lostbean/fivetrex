@@ -92,6 +92,47 @@ defmodule Fivetrex.ConnectorsTest do
                  config: %{host: "localhost"}
                })
     end
+
+    test "creates a connector with connect_card", %{bypass: bypass, client: client} do
+      Bypass.expect_once(bypass, "POST", "/connectors", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        decoded = Jason.decode!(body)
+        assert decoded["group_id"] == "g1"
+        assert decoded["service"] == "google_analytics_4"
+        assert decoded["connect_card_config"]["redirect_uri"] == "https://example.com/callback"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(
+          200,
+          success_response(%{
+            "id" => "new_connector",
+            "group_id" => "g1",
+            "service" => "google_analytics_4",
+            "connect_card" => %{
+              "token" => "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+              "uri" => "https://fivetran.com/connect-card/setup?auth=test_token"
+            }
+          })
+        )
+      end)
+
+      assert {:ok, connector} =
+               Connectors.create(client, %{
+                 group_id: "g1",
+                 service: "google_analytics_4",
+                 connect_card_config: %{
+                   redirect_uri: "https://example.com/callback",
+                   hide_setup_guide: false
+                 }
+               })
+
+      assert connector.id == "new_connector"
+      assert connector.connect_card["token"] == "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+
+      assert connector.connect_card["uri"] ==
+               "https://fivetran.com/connect-card/setup?auth=test_token"
+    end
   end
 
   describe "update/3" do

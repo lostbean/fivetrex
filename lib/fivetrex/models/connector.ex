@@ -23,6 +23,7 @@ defmodule Fivetrex.Models.Connector do
     * `:succeeded_at` - ISO 8601 timestamp of last successful sync
     * `:failed_at` - ISO 8601 timestamp of last failed sync
     * `:config` - Service-specific configuration (connection details, etc.)
+  * `:connect_card` - OAuth redirect information (only present when created with `connect_card_config`)
 
   ## Status Map
 
@@ -107,7 +108,8 @@ defmodule Fivetrex.Models.Connector do
           created_at: String.t() | nil,
           succeeded_at: String.t() | nil,
           failed_at: String.t() | nil,
-          config: map() | nil
+          config: map() | nil,
+          connect_card: map() | nil
         }
 
   defstruct [
@@ -124,7 +126,8 @@ defmodule Fivetrex.Models.Connector do
     :created_at,
     :succeeded_at,
     :failed_at,
-    :config
+    :config,
+    :connect_card
   ]
 
   @doc """
@@ -165,7 +168,8 @@ defmodule Fivetrex.Models.Connector do
       created_at: map["created_at"],
       succeeded_at: map["succeeded_at"],
       failed_at: map["failed_at"],
-      config: map["config"]
+      config: map["config"],
+      connect_card: map["connect_card"]
     }
   end
 
