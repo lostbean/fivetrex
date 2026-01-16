@@ -468,4 +468,127 @@ defmodule Fivetrex.Models.WebhookEventTest do
       refute WebhookEvent.sync_end?(event)
     end
   end
+
+  describe "successful?/1" do
+    test "returns true for SUCCESSFUL status" do
+      event = %WebhookEvent{status: "SUCCESSFUL"}
+      assert WebhookEvent.successful?(event)
+    end
+
+    test "returns false for FAILED status" do
+      event = %WebhookEvent{status: "FAILED"}
+      refute WebhookEvent.successful?(event)
+    end
+
+    test "returns false for nil status" do
+      event = %WebhookEvent{status: nil}
+      refute WebhookEvent.successful?(event)
+    end
+
+    test "returns false for unknown status" do
+      event = %WebhookEvent{status: "UNKNOWN"}
+      refute WebhookEvent.successful?(event)
+    end
+  end
+
+  describe "failed?/1" do
+    test "returns true for FAILED status" do
+      event = %WebhookEvent{status: "FAILED"}
+      assert WebhookEvent.failed?(event)
+    end
+
+    test "returns false for SUCCESSFUL status" do
+      event = %WebhookEvent{status: "SUCCESSFUL"}
+      refute WebhookEvent.failed?(event)
+    end
+
+    test "returns false for nil status" do
+      event = %WebhookEvent{status: nil}
+      refute WebhookEvent.failed?(event)
+    end
+
+    test "returns false for unknown status" do
+      event = %WebhookEvent{status: "UNKNOWN"}
+      refute WebhookEvent.failed?(event)
+    end
+  end
+
+  describe "from_map/1 - all documented fields" do
+    test "extracts all documented Fivetran webhook fields" do
+      payload = %{
+        "event" => "sync_end",
+        "created" => "2021-08-18T11:38:34.386Z",
+        "connector_type" => "asana",
+        "connector_id" => "mystified_presiding",
+        "connector_name" => "My Asana Connector",
+        "sync_id" => "sync_abc123",
+        "destination_group_id" => "deck_enjoy",
+        "status" => "SUCCESSFUL",
+        "data" => %{"message" => "Sync completed"}
+      }
+
+      event = WebhookEvent.from_map(payload)
+
+      assert event.event == "sync_end"
+      assert event.created == ~U[2021-08-18 11:38:34.386Z]
+      assert event.connector_id == "mystified_presiding"
+      assert event.connector_type == "asana"
+      assert event.connector_name == "My Asana Connector"
+      assert event.sync_id == "sync_abc123"
+      assert event.destination_group_id == "deck_enjoy"
+      assert event.status == "SUCCESSFUL"
+      assert event.data == %{"message" => "Sync completed"}
+      assert event.extra == %{}
+    end
+
+    test "handles group_id fallback for destination_group_id" do
+      # Old payloads may only have group_id
+      old_payload = %{
+        "event" => "sync_end",
+        "group_id" => "old_group"
+      }
+
+      event = WebhookEvent.from_map(old_payload)
+      assert event.group_id == "old_group"
+      assert event.destination_group_id == "old_group"
+
+      # New payloads have both
+      new_payload = %{
+        "event" => "sync_end",
+        "group_id" => "old_group",
+        "destination_group_id" => "new_group"
+      }
+
+      event = WebhookEvent.from_map(new_payload)
+      assert event.group_id == "old_group"
+      assert event.destination_group_id == "new_group"
+    end
+
+    test "preserves unknown fields in extra map" do
+      payload = %{
+        "event" => "sync_end",
+        "connector_id" => "conn123",
+        "future_field" => "future_value",
+        "another_unknown" => 42
+      }
+
+      event = WebhookEvent.from_map(payload)
+
+      assert event.extra == %{
+               "future_field" => "future_value",
+               "another_unknown" => 42
+             }
+    end
+
+    test "has empty extra map when no unknown fields" do
+      payload = %{
+        "event" => "sync_start",
+        "connector_id" => "conn123",
+        "sync_id" => "sync_456"
+      }
+
+      event = WebhookEvent.from_map(payload)
+      assert event.extra == %{}
+    end
+  end
 end

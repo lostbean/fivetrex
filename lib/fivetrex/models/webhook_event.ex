@@ -8,12 +8,28 @@ defmodule Fivetrex.Models.WebhookEvent do
 
   ## Fields
 
+  All Fivetran webhook payloads include these standard fields:
+
     * `:event` - Event type (e.g., `"sync_start"`, `"sync_end"`)
     * `:created` - DateTime when the event was created (parsed from ISO 8601)
-    * `:connector_id` - The connector that triggered the event
-    * `:connector_type` - Connector service type (e.g., `"postgres"`, `"salesforce"`)
-    * `:group_id` - Group containing the connector
-    * `:data` - Event-specific data (varies by event type)
+    * `:connector_id` - Unique connector identifier
+    * `:connector_type` - Source connector type (e.g., `"postgres"`, `"mysql"`, `"salesforce"`)
+    * `:connector_name` - Human-readable connector name
+    * `:sync_id` - Identifier for the specific sync operation
+    * `:group_id` - Legacy field, use `:destination_group_id` instead
+    * `:destination_group_id` - Destination group associated with the connector
+    * `:status` - Operation status (`"SUCCESSFUL"` or `"FAILED"`)
+    * `:data` - Event-specific payload (structure varies by event type)
+    * `:extra` - Map of any additional fields not explicitly handled
+
+  The `:extra` field preserves any fields not listed above, ensuring forward
+  compatibility when Fivetran adds new webhook fields.
+
+  ## Backward Compatibility
+
+  For older webhook payloads, `:destination_group_id` will fallback to the value
+  of `:group_id` if `:destination_group_id` is not present. Both fields are
+  preserved in the struct.
 
   ## Event Types
 
@@ -74,6 +90,7 @@ defmodule Fivetrex.Models.WebhookEvent do
     * `Fivetrex.Webhooks` - API functions for managing webhooks
     * `Fivetrex.WebhookSignature` - Signature verification for incoming webhooks
     * `Fivetrex.WebhookPlug` - Plug for Phoenix/Bandit webhook handling
+    * [Fivetran Webhooks Documentation](https://fivetran.com/docs/rest-api/getting-started/webhooks)
   """
 
   @typedoc """
@@ -86,8 +103,13 @@ defmodule Fivetrex.Models.WebhookEvent do
           created: DateTime.t() | nil,
           connector_id: String.t() | nil,
           connector_type: String.t() | nil,
+          connector_name: String.t() | nil,
+          sync_id: String.t() | nil,
           group_id: String.t() | nil,
-          data: map() | nil
+          destination_group_id: String.t() | nil,
+          status: String.t() | nil,
+          data: map() | nil,
+          extra: map()
         }
 
   defstruct [
@@ -95,8 +117,19 @@ defmodule Fivetrex.Models.WebhookEvent do
     :created,
     :connector_id,
     :connector_type,
+    :connector_name,
+    :sync_id,
     :group_id,
-    :data
+    :destination_group_id,
+    :status,
+    :data,
+    extra: %{}
+  ]
+
+  # Known fields that are explicitly handled
+  @known_fields ~w[
+    event created connector_id connector_type connector_name
+    sync_id group_id destination_group_id status data
   ]
 
   @doc """
@@ -123,13 +156,20 @@ defmodule Fivetrex.Models.WebhookEvent do
   """
   @spec from_map(map()) :: t()
   def from_map(map) when is_map(map) do
+    extra = Map.drop(map, @known_fields)
+
     %__MODULE__{
       event: map["event"],
       created: parse_datetime(map["created"]),
       connector_id: map["connector_id"],
       connector_type: map["connector_type"],
+      connector_name: map["connector_name"],
+      sync_id: map["sync_id"],
       group_id: map["group_id"],
-      data: map["data"]
+      destination_group_id: map["destination_group_id"] || map["group_id"],
+      status: map["status"],
+      data: map["data"],
+      extra: extra
     }
   end
 
@@ -200,4 +240,83 @@ defmodule Fivetrex.Models.WebhookEvent do
   """
   @spec sync_end?(t()) :: boolean()
   def sync_end?(%__MODULE__{event: event}), do: event == "sync_end"
+
+  @doc """
+  Returns true if the status indicates successful completion.
+
+  This checks the top-level `:status` field. Note that some event types
+  also include status information in the `:data` field. For `sync_end`
+  events specifically, both the top-level status and `data["status"]`
+  typically contain status information.
+
+  ## Parameters
+
+    * `event` - A `%Fivetrex.Models.WebhookEvent{}` struct
+
+  ## Returns
+
+    * `true` - If the status is `"SUCCESSFUL"`
+    * `false` - Otherwise (including when status is `nil`)
+
+  ## Examples
+
+      iex> event = %Fivetrex.Models.WebhookEvent{status: "SUCCESSFUL"}
+      iex> Fivetrex.Models.WebhookEvent.successful?(event)
+      true
+
+      iex> event = %Fivetrex.Models.WebhookEvent{status: "FAILED"}
+      iex> Fivetrex.Models.WebhookEvent.successful?(event)
+      false
+
+      # Practical usage
+      if WebhookEvent.sync_end?(event) and WebhookEvent.successful?(event) do
+        Logger.info("Sync completed successfully for \#{event.connector_id}")
+      end
+
+  ## See Also
+
+    * `failed?/1` - Check if status indicates failure
+    * `sync_end?/1` - Check if this is a sync completion event
+
+  """
+  @spec successful?(t()) :: boolean()
+  def successful?(%__MODULE__{status: "SUCCESSFUL"}), do: true
+  def successful?(_), do: false
+
+  @doc """
+  Returns true if the status indicates failure.
+
+  This checks the top-level `:status` field. For detailed error information
+  on `sync_end` events, check the `data["reason"]` field.
+
+  ## Parameters
+
+    * `event` - A `%Fivetrex.Models.WebhookEvent{}` struct
+
+  ## Returns
+
+    * `true` - If the status is `"FAILED"`
+    * `false` - Otherwise (including when status is `nil`)
+
+  ## Examples
+
+      iex> event = %Fivetrex.Models.WebhookEvent{status: "FAILED"}
+      iex> Fivetrex.Models.WebhookEvent.failed?(event)
+      true
+
+      # Handle failures with error details
+      if WebhookEvent.sync_end?(event) and WebhookEvent.failed?(event) do
+        reason = get_in(event.data, ["reason"]) || "Unknown error"
+        Logger.error("Sync failed for \#{event.connector_id}: \#{reason}")
+      end
+
+  ## See Also
+
+    * `successful?/1` - Check if status indicates success
+    * `sync_end?/1` - Check if this is a sync completion event
+
+  """
+  @spec failed?(t()) :: boolean()
+  def failed?(%__MODULE__{status: "FAILED"}), do: true
+  def failed?(_), do: false
 end
