@@ -30,14 +30,14 @@ defmodule Fivetrex.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.5"},
+      {:req, "~> 0.6"},
       {:jason, "~> 1.4"},
       # Plug is needed for WebhookPlug - optional for users, required for docs
       {:plug, "~> 1.14", optional: true},
       {:bypass, "~> 2.1", only: :test},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dotenvy, "~> 0.8", only: :test},
+      {:dotenvy, "~> 1.1", only: :test},
       {:stream_data, "~> 1.0", only: :test}
     ]
   end

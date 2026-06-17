@@ -11,10 +11,15 @@ jobs:
     name: Test (Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # Lowest supported version (compatibility floor)
           - elixir: "1.18"
             otp: "27"
+          # Latest version
+          - elixir: "1.20"
+            otp: "28"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,8 +63,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.20"
+          otp-version: "28"
       - name: Cache deps
         uses: actions/cache@v4
         with:
@@ -71,9 +76,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: _build
-          key: ${{ runner.os }}-build-1.18-27-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-build-1.20-28-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-build-1.18-27-
+            ${{ runner.os }}-build-1.20-28-
       - name: Install dependencies
         run: mix deps.get
       - name: Run integration tests
