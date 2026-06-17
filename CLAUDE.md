@@ -42,6 +42,30 @@ mix compile --warnings-as-errors
 mix docs
 ```
 
+## Tooling
+
+This repo uses a Nix-native dev setup. The `mix` commands above run inside the
+dev shell.
+
+- **Dev shell** — run `nix develop` to enter a shell with Elixir/Mix and
+  `lefthook`, or let direnv load it automatically (`direnv allow` once).
+- **Formatting** — `nix fmt` formats the whole repo via treefmt (`mix format`
+  for Elixir via `.formatter.exs`, `prettier` for Markdown/YAML/JSON). The
+  Elixir-only `mix format` / `mix precommit` flow still works as before.
+- **Commit gate** — a lefthook `pre-commit` hook runs `nix fmt` over staged
+  files and re-stages them, so commits are always formatted. Install the hooks
+  once with `lefthook install`. If a commit reformats files, it still succeeds —
+  the formatted result is what gets committed.
+
+### Do
+
+- Run `mix precommit` before committing (format, credo, compile, test).
+
+### Don't
+
+- **Do not add trailers, attribution, `Co-Authored-By`, or `Generated with`
+  footers to commit messages.**
+
 ## Architecture
 
 Fivetrex is an Elixir client library for the Fivetran REST API, built on Req.

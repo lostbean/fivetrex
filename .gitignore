@@ -22,3 +22,6 @@ fivetrex-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 .env
+
+# direnv / nix-direnv cache (Nix dev shell).
+.direnv/
