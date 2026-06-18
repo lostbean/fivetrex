@@ -12,7 +12,6 @@ defmodule Fivetrex.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      preferred_cli_env: [precommit: :test, ci: :test],
       name: "Fivetrex",
       description: "Elixir client library for the Fivetran REST API",
       source_url: @source_url,
@@ -25,6 +24,12 @@ defmodule Fivetrex.MixProject do
   def application do
     [
       extra_applications: [:logger]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [precommit: :test, ci: :test]
     ]
   end
 
